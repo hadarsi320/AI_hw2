@@ -1,4 +1,4 @@
-import pysat
+from pysat.card import CardEnc
 
 ids = ['318792827', '111111111']
 
@@ -24,16 +24,6 @@ sat_states = [sick_0, sick_1, sick_2, healthy, quarantined_0, quarantined_1, imm
 query_states = [sick, healthy, immune, quarantined, unpopulated]
 
 
-def get_neighbors(i, j, height, width):
-    return [val for val in [(i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)] if in_board(*val, height, width)]
-
-
-def in_board(i, j, height, width):
-    return 0 <= i < height and 0 <= j < width
-
-
-
-
 def actions_precondition_clauses(height, width, turns, num_police, num_medics):
     clauses = []
     for row in range(height):
@@ -43,7 +33,7 @@ def actions_precondition_clauses(height, width, turns, num_police, num_medics):
 
 def sick_clauses(turns, row, col, height, width, num_police, num_medics):
     clauses = []
-    
+
     # In initial state
     for turn in range(1, turns):
         clauses.append([])
@@ -59,7 +49,7 @@ def generate_clauses(turns, row, col, height, width, num_police, num_medics):
 
 
 def solve_problem(input):
-    pass
+    solver = Solver(input)
     # put your solution here, remember the format needed
 
 
@@ -84,4 +74,8 @@ class Solver:
         proposition_to_index = {state: i for i, state in enumerate(index_to_proposition)}
         return proposition_to_index, index_to_proposition
 
+    def get_neighbors(self, i, j):
+        return [val for val in [(i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)] if self.in_board(*val)]
 
+    def in_board(self, i, j):
+        return 0 <= i < self.height and 0 <= j < self.width
