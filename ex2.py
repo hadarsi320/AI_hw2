@@ -1,4 +1,5 @@
-# from pysat.card import CardEnc
+from pysat.card import CardEnc, EncType
+from pysat.formula import IDPool
 
 ids = ['318792827', '111111111']
 
@@ -18,12 +19,13 @@ QUARANTINED_1 = 'Q1'
 IMMUNE_RECENTLY = 'IX'
 IMMUNE = 'I'
 
-
 UNK = '?'
 
-sat_states = [SICK_0, SICK_1, SICK_2, HEALTHY, QUARANTINED_0, QUARANTINED_1, IMMUNE_RECENTLY, IMMUNE, UNPOPULATED]
-FIRST_TURN_IMPOSSIBLE_STATES = [SICK_0, SICK_1, QUARANTINED_0, QUARANTINED_1, IMMUNE_RECENTLY, IMMUNE]
-query_states = [SICK, HEALTHY, IMMUNE, QUARANTINED, UNPOPULATED]
+STATES = [SICK_0, SICK_1, SICK_2, HEALTHY, QUARANTINED_0, QUARANTINED_1, IMMUNE_RECENTLY, IMMUNE, UNPOPULATED]
+# FIRST_TURN_IMPOSSIBLE_STATES = [SICK_0, SICK_1, QUARANTINED_0, QUARANTINED_1, IMMUNE_RECENTLY, IMMUNE]
+FIRST_TURN_POSSIBLE_STATES = [SICK_2, HEALTHY, UNPOPULATED]
+SECOND_TURN_POSSIBLE_STATES = [SICK_1, SICK_2, HEALTHY, QUARANTINED_1, IMMUNE_RECENTLY, UNPOPULATED]
+QUERY_STATES = [SICK, HEALTHY, IMMUNE, QUARANTINED, UNPOPULATED]
 
 INPUT2PROPS = {
     'S': {'obs': SICK_2, 'not': (HEALTHY, UNPOPULATED)},
@@ -32,29 +34,28 @@ INPUT2PROPS = {
 }
 
 
-
-
 def solve_problem(input):
     solver = Solver(input)
     # put your solution here, remember the format needed
 
 
 class Solver:
-    def __init__(self, input):
-        self.num_police = input['police']
-        self.num_medics = input['medics']
-        self.observations = input['observations']
+    def __init__(self, solver_input):
+        self.num_police = solver_input['police']
+        self.num_medics = solver_input['medics']
+        self.observations = solver_input['observations']
         self.num_turns = len(self.observations)  # TODO maybe max on queries
         self.height = len(self.observations[0])
         self.width = len(self.observations[0][0])
         self.prop2index, self.index2prop = self.initialize_propositions()
+        # self.clauses = self.generate_clauses()
 
     def initialize_propositions(self):
         index_to_proposition = [0]
         for turn in range(self.num_turns):
             for row in range(self.height):
                 for col in range(self.width):
-                    for state in sat_states:
+                    for state in STATES:
                         index_to_proposition.append((turn, row, col, state))
 
         proposition_to_index = {state: i for i, state in enumerate(index_to_proposition)}
@@ -63,9 +64,9 @@ class Solver:
     def generate_clauses(self):
         clauses = []
         clauses.extend(self.generate_observations_clauses())
-        clauses.extend(self.generate_validity_clauses()) # TODO
+        clauses.extend(self.generate_validity_clauses())  # TODO
         clauses.extend(self.generate_dynamics_clauses())
-        clauses.extend(self.generate_valid_actions_clauses()) # TODO
+        clauses.extend(self.generate_valid_actions_clauses())  # TODO
         return clauses
 
     def generate_observations_clauses(self):
@@ -94,188 +95,186 @@ class Solver:
 
     def generate_validity_clauses(self):
         clauses = []
-        clauses.extend(self.first_turn_clauses())
-        clauses.extend(self.second_turn_clauses())
         for row in range(self.height):
             for col in range(self.width):
-                clauses.extend(self.uniquness_clauses(row, col))
+                clauses.extend(self.first_turn_clauses(row, col))
+                clauses.extend(self.second_turn_clauses(row, col))
+                clauses.extend(self.uniqueness_clauses(row, col))
 
         return clauses
 
-    def first_turn_clauses(self):
-        clauses = []
-
+    def first_turn_clauses(self, row, col):
+        lits = [self.prop2index[(0, row, col, state)] for state in FIRST_TURN_POSSIBLE_STATES]
+        clauses = CardEnc.equals(lits, bound=1, encoding=EncType.pairwise).clauses
         return clauses
 
-    def second_turn_clauses(self):
-        return []
+    def second_turn_clauses(self, row, col):
+        lits = [self.prop2index[(1, row, col, state)] for state in SECOND_TURN_POSSIBLE_STATES]
+        clauses = CardEnc.equals(lits, bound=1, encoding=EncType.pairwise).clauses
+        return clauses
 
-    def uniquness_clauses(self, row, col):
+    def uniqueness_clauses(self, row, col):
         clauses = []
-
-        for turn in range(self.num_turns):
-            pass
-
+        for turn in range(2, self.num_turns):
+            lits = [self.prop2index[(1, row, col, state)] for state in STATES]
+            clauses.extend(CardEnc.equals(lits, bound=1, encoding=EncType.pairwise).clauses)
         return clauses
 
     def generate_dynamics_clauses(self):
         clauses = []
-        for row in range(self.height):
-            for col in range(self.width):
-                clauses.extend(self.unpopulated_clauses(row, col))
-                clauses.extend(self.sick_clauses(row, col))
-                clauses.extend(self.healthy_clauses(row, col))
-                clauses.extend(self.immune_clauses(row, col))
-                clauses.extend(self.quarantine_clauses(row, col))
+        for turn in range(self.num_turns):
+            for row in range(self.height):
+                for col in range(self.width):
+                    clauses.extend(self.unpopulated_clauses(turn, row, col))
+                    clauses.extend(self.sick_clauses(turn, row, col))
+                    clauses.extend(self.healthy_clauses(turn, row, col))
+                    clauses.extend(self.immune_clauses(turn, row, col))
+                    clauses.extend(self.quarantine_clauses(turn, row, col))
 
         return clauses
 
-    def unpopulated_clauses(self, row, col):
+    def unpopulated_clauses(self, turn, row, col):
         clauses = []
 
-        for turn in range(self.num_turns):
-            # Previous Turn
-            if 0 < turn:
-                # U_t = > U_t-1
-                clauses.append([-self.prop2index[(turn, row, col, UNPOPULATED)],
-                                self.prop2index[(turn - 1, row, col, UNPOPULATED)]])
+        # Previous Turn
+        if 0 < turn:
+            # U_t = > U_t-1
+            clauses.append([-self.prop2index[(turn, row, col, UNPOPULATED)],
+                            self.prop2index[(turn - 1, row, col, UNPOPULATED)]])
 
-            # Next Turn
-            if turn < self.num_turns - 1:
-                # U_t => U_t+1
-                clauses.append([-self.prop2index[(turn, row, col, UNPOPULATED)],
-                                self.prop2index[(turn + 1, row, col, UNPOPULATED)]])
+        # Next Turn
+        if turn < self.num_turns - 1:
+            # U_t => U_t+1
+            clauses.append([-self.prop2index[(turn, row, col, UNPOPULATED)],
+                            self.prop2index[(turn + 1, row, col, UNPOPULATED)]])
 
         return clauses
 
-    def sick_clauses(self, row, col):
+    def sick_clauses(self, turn, row, col):
         clauses = []
         neighbors = self.get_neighbors(row, col)
 
-        for turn in range(self.num_turns):
-            # Previous Turn
-            if 0 < turn:
-                # S2_t => H_t-1
-                clauses.append([-self.prop2index[(turn, row, col, SICK_2)],
-                                self.prop2index[(turn - 1, row, col, HEALTHY)]])
-                # S1_t => S2_t-1
-                clauses.append([-self.prop2index[(turn, row, col, SICK_1)],
-                                self.prop2index[(turn - 1, row, col, SICK_2)]])
-                # S0_t => S1_t-1
-                clauses.append([-self.prop2index[(turn, row, col, SICK_0)],
-                                self.prop2index[(turn - 1, row, col, SICK_1)]])
+        # Is sick
+        # Previous Turn
+        if 0 < turn:
+            # S2_t => H_t-1
+            clauses.append([-self.prop2index[(turn, row, col, SICK_2)],
+                            self.prop2index[(turn - 1, row, col, HEALTHY)]])
+            # S1_t => S2_t-1
+            clauses.append([-self.prop2index[(turn, row, col, SICK_1)],
+                            self.prop2index[(turn - 1, row, col, SICK_2)]])
+            # S0_t => S1_t-1
+            clauses.append([-self.prop2index[(turn, row, col, SICK_0)],
+                            self.prop2index[(turn - 1, row, col, SICK_1)]])
 
-            # Next Turn
-            if turn < self.num_turns - 1:
-                # S2_t => S1_t+1 v Q1_t+1
-                clauses.append([-self.prop2index[(turn, row, col, SICK_2)],
-                                self.prop2index[(turn + 1, row, col, SICK_1)],
-                                self.prop2index[(turn + 1, row, col, QUARANTINED_1)]])
-                # S1_t => S0_t+1 v Q1_t+1
-                clauses.append([-self.prop2index[(turn, row, col, SICK_1)],
-                                self.prop2index[(turn + 1, row, col, SICK_0)],
-                                self.prop2index[(turn + 1, row, col, QUARANTINED_1)]])
-                # S0_t => H_t+1 v Q1_t+1
-                clauses.append([-self.prop2index[(turn, row, col, SICK_0)],
-                                self.prop2index[(turn + 1, row, col, HEALTHY)],
-                                self.prop2index[(turn + 1, row, col, QUARANTINED_1)]])
+        # Next Turn
+        if turn < self.num_turns - 1:
+            # S2_t => S1_t+1 v Q1_t+1
+            clauses.append([-self.prop2index[(turn, row, col, SICK_2)],
+                            self.prop2index[(turn + 1, row, col, SICK_1)],
+                            self.prop2index[(turn + 1, row, col, QUARANTINED_1)]])
+            # S1_t => S0_t+1 v Q1_t+1
+            clauses.append([-self.prop2index[(turn, row, col, SICK_1)],
+                            self.prop2index[(turn + 1, row, col, SICK_0)],
+                            self.prop2index[(turn + 1, row, col, QUARANTINED_1)]])
+            # S0_t => H_t+1 v Q1_t+1
+            clauses.append([-self.prop2index[(turn, row, col, SICK_0)],
+                            self.prop2index[(turn + 1, row, col, HEALTHY)],
+                            self.prop2index[(turn + 1, row, col, QUARANTINED_1)]])
 
-            # Infected By Someone
-            if 0 < turn:
-                # S2_t => V (S2n_t-1 v S2n_t-1 v S2n_t-1) for n in neighbors
-                clause = [-self.prop2index[(turn, row, col, SICK_2)]]
-                for (n_row, n_col) in neighbors:
-                    clause.extend([self.prop2index[(turn - 1, n_row, n_col, SICK_2)],
-                                   self.prop2index[(turn - 1, n_row, n_col, SICK_1)],
-                                   self.prop2index[(turn - 1, n_row, n_col, SICK_0)]])
-                clauses.append(clause)
+        # Infected By Someone
+        if 0 < turn:
+            # S2_t => V (S2n_t-1 v S1n_t-1 v S0n_t-1) for n in neighbors
+            clause = [-self.prop2index[(turn, row, col, SICK_2)]]
+            for (n_row, n_col) in neighbors:
+                clause.extend([self.prop2index[(turn - 1, n_row, n_col, SICK_2)],
+                               self.prop2index[(turn - 1, n_row, n_col, SICK_1)],
+                               self.prop2index[(turn - 1, n_row, n_col, SICK_0)]])
+            clauses.append(clause)
 
-            # Infecting Others
-            if turn < self.num_turns - 1:
-                for (n_row, n_col) in neighbors:
-                    for sick_i in [SICK_0, SICK_1, SICK_2]:
-                        # Si_t, Hn_t, -Q1_t+1, -Irecentn_t+1 => S2n_t+1 (Sn, Hn stand for neighbor)
-                        clauses.append([-self.prop2index[(turn, row, col, sick_i)],
-                                        -self.prop2index[(turn, n_row, n_col, HEALTHY)],
-                                        self.prop2index[(turn + 1, row, col, QUARANTINED_1)],
-                                        self.prop2index[(turn + 1, n_row, n_col, IMMUNE_RECENTLY)],
-                                        self.prop2index[(turn + 1, n_row, n_col, SICK_2)]])
-
-        return clauses
-
-    def healthy_clauses(self, row, col):
-        clauses = []
-
-        for turn in range(self.num_turns):
-            # Previous Turn
-            if 0 < turn:
-                # H_t => H_t-1 v Q0_t-1 v S0_t-1
-                clauses.append([-self.prop2index[(turn, row, col, HEALTHY)],
-                                self.prop2index[(turn - 1, row, col, HEALTHY)],
-                                self.prop2index[(turn - 1, row, col, QUARANTINED_0)],
-                                self.prop2index[(turn - 1, row, col, SICK_0)]])
-
-            # Next Turn
-            if turn < self.num_turns - 1:
-                # H_t => H_t+1 v S2_t+1 v Irecently_t+1
-                clauses.append([-self.prop2index[(turn, row, col, HEALTHY)],
-                                self.prop2index[(turn + 1, row, col, HEALTHY)],
-                                self.prop2index[(turn + 1, row, col, SICK_2)],
-                                self.prop2index[(turn + 1, row, col, IMMUNE_RECENTLY)]])
-        return clauses
-
-    def immune_clauses(self, row, col):
-        clauses = []
-
-        for turn in range(self.num_turns):
-            # Previous Turn
-            if 0 < turn:
-                # I_t => I_t-1 v Irecent_t-1
-                clauses.append([-self.prop2index[(turn, row, col, IMMUNE)],
-                                self.prop2index[(turn - 1, row, col, IMMUNE)],
-                                self.prop2index[(turn - 1, row, col, IMMUNE_RECENTLY)]])
-
-                # Irecent_t => H_t-1
-                clauses.append([-self.prop2index[(turn, row, col, IMMUNE_RECENTLY)],
-                                self.prop2index[(turn - 1, row, col, HEALTHY)]])
-
-            # Next Turn
-            if turn < self.num_turns - 1:
-                # I_t => I_t+1
-                clauses.append([-self.prop2index[(turn, row, col, IMMUNE)],
-                                self.prop2index[(turn + 1, row, col, IMMUNE)]])
-
-                # Irecent_t => I_t+1
-                clauses.append([-self.prop2index[(turn, row, col, IMMUNE_RECENTLY)],
-                                self.prop2index[(turn + 1, row, col, IMMUNE)]])
+        # Infecting Others
+        if turn < self.num_turns - 1:
+            for (n_row, n_col) in neighbors:
+                for sick_i in [SICK_0, SICK_1, SICK_2]:
+                    # Si_t /\ Hn_t /\ -Q1_t+1 /\ -I_recent_t+1 => S2n_t+1 (Sn, Hn stand for neighbor)
+                    clauses.append([-self.prop2index[(turn, row, col, sick_i)],
+                                    -self.prop2index[(turn, n_row, n_col, HEALTHY)],
+                                    self.prop2index[(turn + 1, row, col, QUARANTINED_1)],
+                                    self.prop2index[(turn + 1, n_row, n_col, IMMUNE_RECENTLY)],
+                                    self.prop2index[(turn + 1, n_row, n_col, SICK_2)]])
 
         return clauses
 
-    def quarantine_clauses(self, row, col):
+    def healthy_clauses(self, turn, row, col):
         clauses = []
 
-        for turn in range(self.num_turns):
-            # Previous Turn
-            if 0 < turn:
-                # Q1_t => S2_t-1 v S1_t-1 v S0_t-1
-                clauses.append([-self.prop2index[(turn, row, col, QUARANTINED_1)],
-                                self.prop2index[(turn - 1, row, col, SICK_2)],
-                                self.prop2index[(turn - 1, row, col, SICK_1)],
-                                self.prop2index[(turn - 1, row, col, SICK_0)]])
+        # Previous Turn
+        if 0 < turn:
+            # H_t => H_t-1 v Q0_t-1 v S0_t-1
+            clauses.append([-self.prop2index[(turn, row, col, HEALTHY)],
+                            self.prop2index[(turn - 1, row, col, HEALTHY)],
+                            self.prop2index[(turn - 1, row, col, QUARANTINED_0)],
+                            self.prop2index[(turn - 1, row, col, SICK_0)]])
 
-                # Q0_t => Q1_t-1
-                clauses.append([-self.prop2index[(turn, row, col, QUARANTINED_0)],
-                                self.prop2index[(turn - 1, row, col, QUARANTINED_1)]])
+        # Next Turn
+        if turn < self.num_turns - 1:
+            # H_t => H_t+1 \/ S2_t+1 \/ I_recent_t+1
+            clauses.append([-self.prop2index[(turn, row, col, HEALTHY)],
+                            self.prop2index[(turn + 1, row, col, HEALTHY)],
+                            self.prop2index[(turn + 1, row, col, SICK_2)],
+                            self.prop2index[(turn + 1, row, col, IMMUNE_RECENTLY)]])
+        return clauses
 
-            # Next Turn
-            if turn < self.num_turns - 1:
-                # Q1_t => Q0_t+1
-                clauses.append([-self.prop2index[(turn, row, col, QUARANTINED_1)],
-                                self.prop2index[(turn + 1, row, col, QUARANTINED_0)]])
+    def immune_clauses(self, turn, row, col):
+        clauses = []
 
-                # Q0_t => H_t+1
-                clauses.append([-self.prop2index[(turn, row, col, QUARANTINED_0)],
-                                self.prop2index[(turn + 1, row, col, HEALTHY)]])
+        # Previous Turn
+        if 0 < turn:
+            # I_t => I_t-1 v I_recent_t-1
+            clauses.append([-self.prop2index[(turn, row, col, IMMUNE)],
+                            self.prop2index[(turn - 1, row, col, IMMUNE)],
+                            self.prop2index[(turn - 1, row, col, IMMUNE_RECENTLY)]])
+
+            # I_recent_t => H_t-1
+            clauses.append([-self.prop2index[(turn, row, col, IMMUNE_RECENTLY)],
+                            self.prop2index[(turn - 1, row, col, HEALTHY)]])
+
+        # Next Turn
+        if turn < self.num_turns - 1:
+            # I_t => I_t+1
+            clauses.append([-self.prop2index[(turn, row, col, IMMUNE)],
+                            self.prop2index[(turn + 1, row, col, IMMUNE)]])
+
+            # I_recent_t => I_t+1
+            clauses.append([-self.prop2index[(turn, row, col, IMMUNE_RECENTLY)],
+                            self.prop2index[(turn + 1, row, col, IMMUNE)]])
+
+        return clauses
+
+    def quarantine_clauses(self, turn, row, col):
+        clauses = []
+
+        # Previous Turn
+        if 0 < turn:
+            # Q1_t => S2_t-1 v S1_t-1 v S0_t-1
+            clauses.append([-self.prop2index[(turn, row, col, QUARANTINED_1)],
+                            self.prop2index[(turn - 1, row, col, SICK_2)],
+                            self.prop2index[(turn - 1, row, col, SICK_1)],
+                            self.prop2index[(turn - 1, row, col, SICK_0)]])
+
+            # Q0_t => Q1_t-1
+            clauses.append([-self.prop2index[(turn, row, col, QUARANTINED_0)],
+                            self.prop2index[(turn - 1, row, col, QUARANTINED_1)]])
+
+        # Next Turn
+        if turn < self.num_turns - 1:
+            # Q1_t => Q0_t+1
+            clauses.append([-self.prop2index[(turn, row, col, QUARANTINED_1)],
+                            self.prop2index[(turn + 1, row, col, QUARANTINED_0)]])
+
+            # Q0_t => H_t+1
+            clauses.append([-self.prop2index[(turn, row, col, QUARANTINED_0)],
+                            self.prop2index[(turn + 1, row, col, HEALTHY)]])
 
         return clauses
 
@@ -330,27 +329,31 @@ class Solver:
         return f'{state}_{turn}({row}, {col})'
 
 
-if __name__ == '__main__':
+def main():
     inp = {
-            "police": 1,
-            "medics": 0,
-            "observations": [
-                (
-                    ('H', 'S'),
-                    ('?', 'H')
-                ),
+        "police": 1,
+        "medics": 0,
+        "observations": [
+            (
+                ('H', 'S'),
+                ('?', 'H')
+            ),
 
-                (
-                    ('S', '?'),
-                    ('?', 'S')
-                ),
-            ],
+            (
+                ('S', '?'),
+                ('?', 'S')
+            ),
+        ],
 
-            "queries": [
-                [((0, 1), 1, "H"), ((1, 0), 1, "S")]
-            ]
+        "queries": [
+            [((0, 1), 1, "H"), ((1, 0), 1, "S")]
+        ]
 
-        }
+    }
 
     s = Solver(inp)
     clauses = s.generate_clauses()
+
+
+if __name__ == '__main__':
+    main()
