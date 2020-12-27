@@ -28,8 +28,8 @@ UNK = '?'
 
 STATES = [SICK_0, SICK_1, SICK_2, HEALTHY, QUARANTINED_0, QUARANTINED_1, IMMUNE_RECENTLY, IMMUNE, UNPOPULATED]
 # FIRST_TURN_IMPOSSIBLE_STATES = [SICK_0, SICK_1, QUARANTINED_0, QUARANTINED_1, IMMUNE_RECENTLY, IMMUNE]
-FIRST_TURN_POSSIBLE_STATES = [SICK_2, HEALTHY, UNPOPULATED]
-SECOND_TURN_POSSIBLE_STATES = [SICK_1, SICK_2, HEALTHY, QUARANTINED_1, IMMUNE_RECENTLY, UNPOPULATED]
+FIRST_TURN_STATES = [SICK_2, HEALTHY, UNPOPULATED]
+SECOND_TURN_STATES = [SICK_1, SICK_2, HEALTHY, QUARANTINED_1, IMMUNE_RECENTLY, UNPOPULATED]
 SICK_STATES = [SICK_0, SICK_1, SICK_2]
 QUERY_STATES = [SICK, HEALTHY, QUARANTINED, IMMUNE, UNPOPULATED]
 
@@ -96,13 +96,19 @@ class Solver:
         return clauses
 
     def first_turn_clauses(self, row, col):
-        lits = [self.vpool.id((0, row, col, state)) for state in FIRST_TURN_POSSIBLE_STATES]
+        lits = [self.vpool.id((0, row, col, state)) for state in FIRST_TURN_STATES]
         clauses = CardEnc.equals(lits, bound=1, vpool=self.vpool).clauses
+        for state in STATES:
+            if state not in FIRST_TURN_STATES:
+                clauses.append([-self.vpool.id((0, row, col, state))])
         return clauses
 
     def second_turn_clauses(self, row, col):
-        lits = [self.vpool.id((1, row, col, state)) for state in SECOND_TURN_POSSIBLE_STATES]
+        lits = [self.vpool.id((1, row, col, state)) for state in SECOND_TURN_STATES]
         clauses = CardEnc.equals(lits, bound=1, vpool=self.vpool).clauses
+        for state in STATES:
+            if state not in SECOND_TURN_STATES:
+                clauses.append([-self.vpool.id((0, row, col, state))])
         return clauses
 
     def uniqueness_clauses(self, row, col):
@@ -435,7 +441,7 @@ def solve_problem(problem):
     return results
 
 
-def answer_query(solver, query):
+def answer_query(solver: Solver, query):
     formula = solver.clauses + [solver.generate_query_clause(query)]
     if solve_formula(formula):
         alternative_queries = get_alternative_queries(query)
