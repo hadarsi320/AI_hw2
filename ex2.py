@@ -38,7 +38,7 @@ class Solver:
         self.num_police = solver_input['police']
         self.num_medics = solver_input['medics']
         self.observations = solver_input['observations']
-        self.num_turns = len(self.observations)  # TODO maybe max on queries
+        self.num_turns = len(self.observations)
         self.height = len(self.observations[0])
         self.width = len(self.observations[0][0])
         self.vpool = IDPool()
@@ -48,10 +48,10 @@ class Solver:
 
     def generate_clauses(self):
         clauses = []
-        clauses.extend(self.generate_observations_clauses())  # TODO check validity
-        clauses.extend(self.generate_validity_clauses())  # TODO check validity
-        clauses.extend(self.generate_dynamics_clauses())  # TODO check validity
-        clauses.extend(self.generate_valid_actions_clauses())  # TODO check validity
+        clauses.extend(self.generate_observations_clauses())
+        clauses.extend(self.generate_validity_clauses())
+        clauses.extend(self.generate_dynamics_clauses())
+        clauses.extend(self.generate_valid_actions_clauses())
         return clauses
 
     def generate_observations_clauses(self):
@@ -106,7 +106,7 @@ class Solver:
 
     def uniqueness_clauses(self, row, col):
         clauses = []
-        for turn in range(2, self.num_turns):
+        for turn in range(self.num_turns):
             lits = [self.vpool.id((turn, row, col, state)) for state in STATES]
             clauses.extend(CardEnc.equals(lits, bound=1, vpool=self.vpool).clauses)
         return clauses
@@ -283,7 +283,7 @@ class Solver:
                     for row in range(self.height)
                     for col in range(self.width)]
             clauses.extend(CardEnc.atmost(lits, bound=self.num_police, vpool=self.vpool).clauses)
-        # TODO check case of 0 policemen
+
         if self.num_police == 0:
             return clauses
 
@@ -291,7 +291,6 @@ class Solver:
             for num_sick in range(self.width * self.height):
                 for sick_tiles in itertools.combinations(self.tiles, num_sick):
                     healthy_tiles = [tile for tile in self.tiles if tile not in sick_tiles]
-                    # TODO don't iterate over all sick states
                     for sick_state_perm in \
                             itertools.combinations_with_replacement(self.possible_sick_states(turn), num_sick):
                         clause = []
@@ -310,27 +309,6 @@ class Solver:
                             temp_clause += sub_clause
                             clauses.append(temp_clause)
 
-                        # if num_sick <= self.num_police:
-                        #     for (row, col) in sick_tiles:
-                        #         temp_clause = deepcopy(clause)
-                        #         temp_clause.append(self.vpool.id((turn+1, row, col, QUARANTINED_1)))
-                        #         clauses.extend(temp_clause)
-                        #
-                        #     # for (row, col) in healthy_tiles:
-                        #     #     temp_clause = deepcopy(clause)
-                        #     #     temp_clause.append(-self.vpool.id((turn+1, row, col, QUARANTINED_1)))
-                        #     #     clauses.extend(temp_clause)
-                        #
-                        # else:
-                        #     lits = [self.vpool.id((turn+1, row, col, QUARANTINED_1))
-                        #             for row in range(self.height)
-                        #             for col in range(self.width)]
-                        #     equals_clauses = CardEnc.equals(lits, bound=self.num_police, vpool=self.vpool)
-                        #
-                        #     for sub_clause in equals_clauses.clauses():
-                        #         temp_clause = deepcopy(clause)
-                        #         temp_clause += sub_clause
-                        #         clauses.extend(temp_clause)
         return clauses
 
     def generate_medic_clauses(self):
@@ -341,7 +319,6 @@ class Solver:
                     for row in range(self.height)
                     for col in range(self.width)]
             clauses.extend(CardEnc.atmost(lits, bound=self.num_medics, vpool=self.vpool).clauses)
-        # TODO check case of 0 medics
         if self.num_medics == 0:
             return clauses
 
