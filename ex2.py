@@ -291,11 +291,11 @@ class Solver:
             for num_sick in range(self.width * self.height):
                 for sick_tiles in itertools.combinations(self.tiles, num_sick):
                     healthy_tiles = [tile for tile in self.tiles if tile not in sick_tiles]
-                    for sick_state_perm in \
-                            itertools.combinations_with_replacement(self.possible_sick_states(turn), num_sick):
+                    for sick_states in itertools.combinations_with_replacement(self.possible_sick_states(turn),
+                                                                               num_sick):
                         clause = []
 
-                        for (row, col), state in zip(sick_tiles, sick_state_perm):
+                        for (row, col), state in zip(sick_tiles, sick_states):
                             clause.append(-self.vpool.id((turn, row, col, state)))
                         for row, col in healthy_tiles:
                             for state in self.possible_sick_states(turn):
@@ -402,6 +402,14 @@ class Solver:
             return [SICK_1, SICK_2]
         return SICK_STATES
 
+    def get_state_tiles(self, state, turn):
+        tiles = []
+        for i, row in enumerate(self.observations[turn]):
+            for j, tile in enumerate(row):
+                if tile == state:
+                    tiles.append((i, j))
+        return tiles
+
 
 def solve_problem(problem):
     solver = Solver(problem)
@@ -467,4 +475,4 @@ def main():
 if __name__ == '__main__':
     start_time = time()
     main()
-    print(f'Total run time: {time()-start_time}')
+    print(f'Total run time: {time() - start_time}')

@@ -1,5 +1,6 @@
 import time
 import ex2
+import ex2_el
 
 
 def timeout_exec(func, args=(), kwargs={}, timeout_duration=10, default=None):
@@ -31,6 +32,8 @@ def timeout_exec(func, args=(), kwargs={}, timeout_duration=10, default=None):
 
 
 def solve_problems(problems):
+    # import ex2_el as ex2
+
     for problem in problems:
         timeout = 300
         t1 = time.time()
