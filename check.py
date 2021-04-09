@@ -32,15 +32,13 @@ def timeout_exec(func, args=(), kwargs={}, timeout_duration=10, default=None):
 
 
 def solve_problems(problems):
-    # import ex2_el as ex2
-
     for problem in problems:
         timeout = 300
         t1 = time.time()
         result = timeout_exec(ex2.solve_problem, args=[problem], timeout_duration=timeout)
         t2 = time.time()
         print(f'Your answer is {result}, achieved in {t2-t1:.3f} seconds')
-        
+
 
 
 def main():

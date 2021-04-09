@@ -61,7 +61,9 @@ class Solver:
             for row in range(self.height):
                 for col in range(self.width):
                     state = observation[row][col]
-                    if state == SICK:
+                    if state == UNK:
+                        continue
+                    elif state == SICK:
                         clauses.append([self.vpool.id((turn, row, col, SICK_0)),
                                         self.vpool.id((turn, row, col, SICK_1)),
                                         self.vpool.id((turn, row, col, SICK_2))])
@@ -71,8 +73,6 @@ class Solver:
                     elif state == IMMUNE:
                         clauses.append([self.vpool.id((turn, row, col, IMMUNE_RECENTLY)),
                                         self.vpool.id((turn, row, col, IMMUNE))])
-                    elif state == UNK:
-                        continue
                     else:
                         clauses.append([self.vpool.id((turn, row, col, state))])
 
@@ -101,7 +101,7 @@ class Solver:
         clauses = CardEnc.equals(lits, bound=1, vpool=self.vpool).clauses
         for state in STATES:
             if state not in SECOND_TURN_STATES:
-                clauses.append([-self.vpool.id((0, row, col, state))])
+                clauses.append([-self.vpool.id((1, row, col, state))])
         return clauses
 
     def uniqueness_clauses(self, row, col):
@@ -288,8 +288,13 @@ class Solver:
             return clauses
 
         for turn in range(self.num_turns - 1):
-            for num_sick in range(self.width * self.height):
-                for sick_tiles in itertools.combinations(self.tiles, num_sick):
+            actual_sick_tiles = self.get_state_tiles(SICK, turn)
+            unk_tiles = self.get_state_tiles(UNK, turn)
+            for num_unk_sick in range(len(unk_tiles) + 1):
+                for new_sick_tiles in itertools.combinations(unk_tiles, num_unk_sick):
+                    sick_tiles = actual_sick_tiles + list(new_sick_tiles)
+                    num_sick = len(sick_tiles)
+
                     healthy_tiles = [tile for tile in self.tiles if tile not in sick_tiles]
                     for sick_state_perm in \
                             itertools.combinations_with_replacement(self.possible_sick_states(turn), num_sick):
@@ -305,8 +310,7 @@ class Solver:
                         equals_clauses = CardEnc.equals(
                             lits, bound=min(self.num_police, num_sick), vpool=self.vpool).clauses
                         for sub_clause in equals_clauses:
-                            temp_clause = deepcopy(clause)
-                            temp_clause += sub_clause
+                            temp_clause = clause + sub_clause
                             clauses.append(temp_clause)
 
         return clauses
@@ -319,27 +323,32 @@ class Solver:
                     for row in range(self.height)
                     for col in range(self.width)]
             clauses.extend(CardEnc.atmost(lits, bound=self.num_medics, vpool=self.vpool).clauses)
+
         if self.num_medics == 0:
             return clauses
 
         for turn in range(self.num_turns - 1):
-            for num_healthy in range(self.width * self.height):
-                for healthy_tiles in itertools.combinations(self.tiles, num_healthy):
-                    sick_tiles = [tile for tile in self.tiles if tile not in healthy_tiles]
+            actual_healthy_tiles = self.get_state_tiles(HEALTHY, turn)
+            unk_tiles = self.get_state_tiles(UNK, turn)
+            for num_unk_sick in range(len(unk_tiles) + 1):
+                for new_healthy_tiles in itertools.combinations(unk_tiles, num_unk_sick):
+                    healthy_tiles = actual_healthy_tiles + list(new_healthy_tiles)
+                    num_healthy = len(healthy_tiles)
+
+                    not_healthy_tiles = [tile for tile in self.tiles if tile not in healthy_tiles]
                     clause = []
 
                     for row, col in healthy_tiles:
                         clause.append(-self.vpool.id((turn, row, col, HEALTHY)))
 
-                    for row, col in sick_tiles:
+                    for row, col in not_healthy_tiles:
                         clause.append(self.vpool.id((turn, row, col, HEALTHY)))
 
                     lits = [self.vpool.id((turn + 1, row, col, IMMUNE_RECENTLY)) for row, col in healthy_tiles]
-                    equals_clauses = CardEnc.equals(
-                        lits, bound=min(self.num_medics, num_healthy), vpool=self.vpool).clauses
+                    equals_clauses = \
+                        CardEnc.equals(lits, bound=min(self.num_medics, num_healthy), vpool=self.vpool).clauses
                     for sub_clause in equals_clauses:
-                        temp_clause = deepcopy(clause)
-                        temp_clause += sub_clause
+                        temp_clause = clause + sub_clause
                         clauses.append(temp_clause)
 
         return clauses
@@ -351,48 +360,25 @@ class Solver:
         return 0 <= i < self.height and 0 <= j < self.width
 
     def generate_query_clause(self, query):
-        (q_row, q_col), turn, state = query
+        (row, col), turn, state = query
 
         if state == SICK:
-            clause = [self.vpool.id((turn, q_row, q_col, SICK_0)),
-                      self.vpool.id((turn, q_row, q_col, SICK_1)),
-                      self.vpool.id((turn, q_row, q_col, SICK_2))]
+            clause = [self.vpool.id((turn, row, col, SICK_0)),
+                      self.vpool.id((turn, row, col, SICK_1)),
+                      self.vpool.id((turn, row, col, SICK_2))]
 
         elif state == QUARANTINED:
-            clause = [self.vpool.id((turn, q_row, q_col, QUARANTINED_0)),
-                      self.vpool.id((turn, q_row, q_col, QUARANTINED_1))]
+            clause = [self.vpool.id((turn, row, col, QUARANTINED_0)),
+                      self.vpool.id((turn, row, col, QUARANTINED_1))]
 
         elif state == IMMUNE:
-            clause = [self.vpool.id((turn, q_row, q_col, IMMUNE)),
-                      self.vpool.id((turn, q_row, q_col, IMMUNE_RECENTLY))]
+            clause = [self.vpool.id((turn, row, col, IMMUNE)),
+                      self.vpool.id((turn, row, col, IMMUNE_RECENTLY))]
 
         else:
-            clause = [self.vpool.id((turn, q_row, q_col, state))]
+            clause = [self.vpool.id((turn, row, col, state))]
 
         return clause
-
-    def __str__(self):
-        return '\n'.join(self.repr_clauses())
-
-    def repr_clauses(self):
-        return [self.clause2str(clause) for clause in self.clauses]
-
-    def clause2str(self, clause):
-        # out = ''
-        # for ind in clause[:-1]:
-        #     out += f'{self.prop2str(self.vpool.obj(abs(ind)))} v '
-        # out += self.prop2str(self.vpool.obj(abs(clause[-1])))
-
-        out = ' \\/ '.join(['-' * (ind < 0) + self.prop2str(self.vpool.obj(abs(ind)))
-                            for ind in clause])
-        return out
-
-    @staticmethod
-    def prop2str(prop):
-        if prop is None:
-            return 'Fictive'
-        turn, row, col, state = prop
-        return f'{state}_{turn}_({row},{col})'
 
     @staticmethod
     def possible_sick_states(turn):
@@ -434,7 +420,8 @@ def answer_query(solver: Solver, query):
 def solve_formula(formula):
     g = Glucose4(with_proof=True)
     g.append_formula(formula)
-    return g.solve()
+    answer = g.solve()
+    return answer
 
 
 def get_alternative_queries(query):
