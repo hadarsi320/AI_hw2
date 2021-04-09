@@ -291,11 +291,11 @@ class Solver:
             for num_sick in range(self.width * self.height):
                 for sick_tiles in itertools.combinations(self.tiles, num_sick):
                     healthy_tiles = [tile for tile in self.tiles if tile not in sick_tiles]
-                    for sick_states in itertools.combinations_with_replacement(self.possible_sick_states(turn),
-                                                                               num_sick):
+                    for sick_state_perm in \
+                            itertools.combinations_with_replacement(self.possible_sick_states(turn), num_sick):
                         clause = []
 
-                        for (row, col), state in zip(sick_tiles, sick_states):
+                        for (row, col), state in zip(sick_tiles, sick_state_perm):
                             clause.append(-self.vpool.id((turn, row, col, state)))
                         for row, col in healthy_tiles:
                             for state in self.possible_sick_states(turn):
