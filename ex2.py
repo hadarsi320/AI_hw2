@@ -1,6 +1,4 @@
 import itertools
-from copy import deepcopy
-from time import time
 
 from pysat.card import CardEnc
 from pysat.formula import IDPool
