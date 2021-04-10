@@ -433,33 +433,3 @@ def get_alternative_queries(query):
             continue
         cf_queries.append((loc, turn, state))
     return cf_queries
-
-
-def main():
-    inp = {
-        "police": 1,
-        "medics": 0,
-        "observations": [
-            (
-                ('H', 'S'),
-                ('?', 'H')
-            ),
-
-            (
-                ('S', '?'),
-                ('?', 'S')
-            ),
-        ],
-
-        "queries": [
-            [((0, 1), 1, "H"), ((1, 0), 1, "S")]
-        ]
-
-    }
-    print(solve_problem(inp))
-
-
-if __name__ == '__main__':
-    start_time = time()
-    main()
-    print(f'Total run time: {time() - start_time}')
